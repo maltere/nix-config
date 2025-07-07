@@ -3,7 +3,7 @@ set -euo pipefail
 
 # automation for the steps from `mac.md`
 
-cd "/Users/frath/Applications/Home Manager Trampolines/Brave Browser.app/Contents/MacOS"
+cd "/Users/malte/Applications/Home Manager Trampolines/Brave Browser.app/Contents/MacOS"
 
 rm "./applet" || true
 

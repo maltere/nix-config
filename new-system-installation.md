@@ -100,8 +100,8 @@ swapon /dev/...
 ## Set Up Installation
 
 ```bash
-mkdir -p /mnt/home/felix
-cd /mnt/home/felix
+mkdir -p /mnt/home/malte
+cd /mnt/home/malte
 git clone https://github.com/futile/nixos-config.git nixos # works, since repo is public :)
 cd
 nixos-generate-config --root /mnt

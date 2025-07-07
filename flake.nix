@@ -19,7 +19,28 @@
     # nixpkgs-master = { url = "github:nixos/nixpkgs/master"; };
 
     # disabling this cause I didn't have a ~/gits/nixpkgs lying around
-    # nixpkgs-local = { url = "/home/felix/gits/nixpkgs"; };
+    # nixpkgs-local = { url = "/home/malte/gits/nixpkgs"; };
+
+    nix-homebrew = {
+      url = "github:zhaofengli-wip/nix-homebrew";
+      flake = false;
+    };
+
+    homebrew-core = {
+      url = "github:homebrew/homebrew-core";
+      flake = false;
+    };
+    homebrew-cask = {
+      url = "github:homebrew/homebrew-cask";
+      flake = false;
+    };
+
+    darwin = {
+      url =  "github:nix-darwin/nix-darwin";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+      };
+    };
 
     # for emacsGcc; see https://gist.github.com/mjlbach/179cf58e1b6f5afcb9a99d4aaf54f549
     emacs-overlay = {
@@ -97,228 +118,204 @@
       self,
       nixpkgs,
       home-manager,
+      darwin,
+      nix-homebrew,
+      homebrew-core,
+      homebrew-cask,
       ...
     }@inputs:
     let
-      # base modules that will commonly be used by all systems
-      baseModules = [
-        # core stuff (overlays, nix config, flake registry, nix path, etc.)
-        ./modules/core.nix
-
-        # `lib.my`
-        ./modules/lib-my.nix
-
-        # load cachix caches; generated through `cachix use -m nixos <cache-name>`
-        ./cachix.nix
-      ];
-      system = "x86_64-linux";
+      flake-inputs = inputs;
     in
     {
-      packages.${system} = {
-        # these are here mostly for debugging, for actual use I base on the `nixpkgs`-instance of a configured system, see overlay in `core.nix`.
-        phinger-cursors-extended =
-          nixpkgs.legacyPackages.${system}.callPackage ./custom-packages/phinger-cursors-extended.nix
-            { };
-      };
+      darwinConfigurations."hm-cf" = darwin.lib.darwinSystem {
+        system = "aarch64-darwin";
 
-      nixosConfigurations.nixos-home = nixpkgs.lib.nixosSystem {
-        inherit system;
-
-        # forward flake-inputs to module arguments
         specialArgs = {
           flake-inputs = inputs;
-          inherit system;
-        };
-
-        modules = baseModules ++ [
-          # keeping around for when I need to override 1 or more packages again
-          (
-            {
-              config,
-              flake-inputs,
-              system,
-              ...
-            }:
-            {
-              nixpkgs.overlays = [
-                (_: _: {
-                  # override until https://nixpk.gs/pr-tracker.html?pr=356292 is in nixos-unstable
-                  neovide = flake-inputs.nixpkgs-pkgs-unstable.legacyPackages.${system}.neovide;
-                })
-              ];
-            }
-          )
-
-          # "draw the rest of the owl"
-          ./hosts/nixos-home
-        ];
-      };
-
-      nixosConfigurations.nixos-work = nixpkgs.lib.nixosSystem {
-        inherit system;
-
-        # forward flake-inputs to module arguments
-        specialArgs = {
-          flake-inputs = inputs;
-          inherit system;
-        };
-
-        modules = baseModules ++ [
-          # "draw the rest of the owl"
-          ./hosts/nixos-work
-          # use wezterm from git, because unstable currently fails to start on wayland
-          (
-            {
-              config,
-              flake-inputs,
-              system,
-              ...
-            }:
-            {
-              nixpkgs.overlays = [
-                (final: prev: { wezterm = flake-inputs.wezterm-git.packages.${prev.system}.default; })
-              ];
-            }
-          )
-        ];
-      };
-
-      homeConfigurations."frath" = home-manager.lib.homeManagerConfiguration {
-        pkgs = import nixpkgs {
           system = "aarch64-darwin";
+        };
 
-          config = {
-            # explicitly manage which unfree packages I allow in this config
-            allowUnfreePredicate =
-              pkg:
-              builtins.elem (nixpkgs.lib.getName pkg) [
-                "spotify" # allowed + need music
-                "sublime-merge" # unfree license, but explicitly has an "unrestricted evaluation period", i.e., no time limit
-                "tableplus" # unfree, but has tab-/window-limit in the free version, that's it
-                "gitbutler" # unfree, but free for individual developers, plus no pricing exists yet (2025-03-24)
-                "vault" # unfree, but we use this at CF (2025-04-09)
-                "vault-bin" # unfree, but we use this at CF (2025-04-09)
-              ];
-          };
+        # Specify your darwin configuration modules here
+        modules = [
+          nix-homebrew.darwinModules.nix-homebrew
 
-          overlays = [
-            (final: prev: {
-              lib = prev.lib // {
-                my = {
-                  editorTools = (
-                    with final;
-                    [
-                      # misc
-                      jq
-                      editorconfig-core-c
+          {
+            nix-homebrew = {
+              enable = true;
 
-                      # markdown
-                      multimarkdown
-                      markdownlint-cli2
-                      marksman
-
-                      # shell
-                      shfmt
-                      shellcheck
-
-                      # python
-                      black
-                      python3Packages.pyflakes
-                      python3Packages.isort
-                      pyright
-
-                      # nix
-                      nil # nix lsp
-                      nixd # better nix lsp?
-                      nixfmt-rfc-style
-
-                      # go
-                      gopls
-                      gotools
-                      gofumpt
-                      gomodifytags
-                      impl
-
-                      # tex
-                      # texlab
-
-                      # typst
-                      # typst-lsp # currently broken due to Rust 1.80 `time`-fallout
-                      typstfmt
-                      # typst-live
-
-                      # scala
-                      metals
-
-                      # dhall
-                      # dhall-lsp-server # currently (2023-08-19) broken
-
-                      # lua
-                      stylua
-                      lua-language-server
-
-                      # jsonls
-                      nodePackages.vscode-json-languageserver
-
-                      # js/ts (:
-                      vtsls
-                    ]
-                  );
-
-                  # TODO: put `mkWrappedWithDeps` into its own file, so we can import/use it here
-                  # mkWrappedWithDeps = mkWrappedWithDeps final prev;
-                  mkWrappedWithDeps =
-                    {
-                      pkg,
-                      pathsToWrap,
-                      prefix-deps ? [ ],
-                      suffix-deps ? [ ],
-                      extraWrapProgramArgs ? [ ],
-                      otherArgs ? { },
-                    }:
-                    let
-                      prefixBinPath = prev.lib.makeBinPath prefix-deps;
-                      suffixBinPath = prev.lib.makeBinPath suffix-deps;
-                    in
-                    prev.symlinkJoin (
-                      {
-                        name = pkg.name + "-wrapped";
-                        paths = [ pkg ];
-                        buildInputs = [ final.makeWrapper ];
-                        postBuild = ''
-                          cd "$out"
-                          for p in ${builtins.toString pathsToWrap}
-                          do
-                            wrapProgram "$out/$p" \
-                              --prefix PATH : "${prefixBinPath}" \
-                              --suffix PATH : "${suffixBinPath}" \
-                              ${builtins.toString extraWrapProgramArgs}
-                          done
-                        '';
-                      }
-                      // otherArgs
-                    );
-                };
+              taps = {
+                "homebrew/homebrew-core" = homebrew-core;
+                "homebrew/homebrew-cask" = homebrew-cask;
               };
-            })
+            };
 
-            # inputs.cf-engineering-nixpkgs.overlay
-          ];
-        };
+            homebrew = {
+              enable = true;
 
-        # Specify your home configuration modules here, for example,
-        # the path to your home.nix.
-        modules = [ ./hosts/hm-cf/home.nix ];
+              onActivation = {
+                cleanup = "zap";
+              };
 
-        # Optionally use extraSpecialArgs
-        # to pass through arguments to home.nix
-        # forward flake-inputs to module arguments
-        extraSpecialArgs = {
-          flake-inputs = inputs;
-          system = "aarch64-darwin";
-          # absolute path to this flake, i.e., to break nix's isolation
-          thisFlakePath = "/Users/frath/nixos";
-        };
+              brews = [
+                "cloudflared"
+                "cmake"
+                "ollama"
+                "kubie"
+                "kubernetes-cli"
+                "grepcidr"
+                "lua"
+                "repomix"
+                "protobuf"
+                "golangci-lint"
+              ];
+            };
+          }
+
+          ./hosts/hm-cf/darwin.nix
+
+          # Add home-manager's darwin module
+          # home-manager.darwinModules.home-manager
+          home-manager.darwinModules.home-manager
+
+          inputs.mac-app-util.darwinModules.default
+
+          ({ pkgs, ... }: {
+            # Replicate the pkgs configuration from the old home-manager standalone config
+            nixpkgs.config = {
+              # explicitly manage which unfree packages I allow in this config
+              allowUnfreePredicate =
+                pkg:
+                builtins.elem (pkgs.lib.getName pkg) [
+                  "spotify" # allowed + need music
+                  "sublime-merge" # unfree license, but explicitly has an "unrestricted evaluation period", i.e., no time limit
+                  "tableplus" # unfree, but has tab-/window-limit in the free version, that's it
+                  # "gitbutler" # unfree, but free for individual developers, plus no pricing exists yet (2025-03-24)
+                  "vault" # unfree, but we use this at CF (2025-04-09)
+                  "vault-bin" # unfree, but we use this at CF (2025-04-09)
+                ];
+            };
+
+            nixpkgs.overlays = [
+              (final: prev: {
+                lib = prev.lib // {
+                  my = {
+                    editorTools = (
+                      with final;
+                      [
+                        # misc
+                        jq
+                        editorconfig-core-c
+
+                        # markdown
+                        multimarkdown
+                        markdownlint-cli2
+                        marksman
+
+                        # shell
+                        shfmt
+                        shellcheck
+
+                        # python
+                        black
+                        python3Packages.pyflakes
+                        python3Packages.isort
+                        pyright
+
+                        # nix
+                        nil # nix lsp
+                        nixd # better nix lsp?
+                        nixfmt-rfc-style
+
+                        # go
+                        gopls
+                        gotools
+                        gofumpt
+                        gomodifytags
+                        impl
+
+                        # tex
+                        # texlab
+
+                        # typst
+                        # typst-lsp # currently broken due to Rust 1.80 `time`-fallout
+                        typstfmt
+                        # typst-live
+
+                        # scala
+                        metals
+
+                        # dhall
+                        # dhall-lsp-server # currently (2023-08-19) broken
+
+                        # lua
+                        stylua
+                        lua-language-server
+
+                        # jsonls
+                        nodePackages.vscode-json-languageserver
+
+                        # js/ts (:
+                      ]
+                    );
+                    mkWrappedWithDeps =
+                      {
+                        pkg,
+                        pathsToWrap,
+                        prefix-deps ? [ ],
+                        suffix-deps ? [ ],
+                        extraWrapProgramArgs ? [ ],
+                        otherArgs ? { },
+                      }:
+                      let
+                        prefixBinPath = prev.lib.makeBinPath prefix-deps;
+                        suffixBinPath = prev.lib.makeBinPath suffix-deps;
+                      in
+                      prev.symlinkJoin (
+                        {
+                          name = pkg.name + "-wrapped";
+                          paths = [ pkg ];
+                          buildInputs = [ final.makeWrapper ];
+                          postBuild = ''
+                            cd "$out"
+                            for p in ${builtins.toString pathsToWrap}
+                            do
+                              wrapProgram "$out/$p" \
+                                --prefix PATH : "${prefixBinPath}" \
+                                --suffix PATH : "${suffixBinPath}" \
+                                ${builtins.toString extraWrapProgramArgs}
+                            done
+                          '';
+                        }
+                        // otherArgs
+                      );
+                  };
+                };
+              })
+              # inputs.cf-engineering-nixpkgs.overlay
+            ];
+
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+            home-manager.users.malte.imports = [
+              ./hosts/hm-cf/home.nix
+            ];
+            home-manager.extraSpecialArgs = {
+              flake-inputs = inputs;
+              thisFlakePath = self;
+              system = "aarch64-darwin";
+              # thisFlakePath = "/Users/malte/playground/configs/nix-config";
+            };
+
+            # Declare the user for nix-darwin system management
+            users.users.malte = {
+              home = "/Users/malte";
+            };
+
+            # Recommended to set this. 4 is the latest as of now.
+            system.stateVersion = 4;
+          })
+        ];
       };
 
       formatter = {
