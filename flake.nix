@@ -76,13 +76,6 @@
       flake = false;
     };
 
-    wezterm-embark = {
-      url = "github:dmshvetsov/wezterm-embark-theme";
-      flake = false;
-    };
-
-    wezterm-git.url = "github:wez/wezterm?dir=nix";
-
     mac-app-util.url = "github:hraban/mac-app-util";
 
     # https://isd-project.github.io/isd/
